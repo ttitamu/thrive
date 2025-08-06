@@ -4730,8 +4730,11 @@
     }
   },
   "files": {
+    ".RData": {
+      "checksum": "094846fa7b0ea1b46a8c4440ecc3e3e5"
+    },
     "app.R": {
-      "checksum": "53ef883f90e5b7ded2a29b1879aa6dcd"
+      "checksum": "3969a04dd937ec985a4a4fa86b378654"
     },
     "data/aermod.exe": {
       "checksum": "92edecdbea498ca276a1969bfab1d98d"

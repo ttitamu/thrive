@@ -19,7 +19,7 @@ library(gstat)
 library(stars)
 library(data.table)
 library(lubridate)
-library(httr) # Added for downloading EPA data
+library(httr)
 
 # Load Texas counties data and transform to WGS84
 texas_counties <- counties(state = "TX", cb = TRUE)
@@ -29,6 +29,61 @@ texas_counties <- st_transform(texas_counties, 4326)
 emission_factors <- read.csv("data/Emission_Factors.csv")
 county_lookup <- read.csv("data/counties.csv")
 hourly_factors_df <- read.csv("data/Hourly_Factors.csv")
+
+# 1. Load the geometries from the tigris package for the year 2020
+options(tigris_use_cache = TRUE)
+tx_counties_geo <- counties("TX", year = 2020)
+tx_tracts_geo <- tracts("TX", year = 2020)
+tx_blkgps_geo <- block_groups("TX", year = 2020)
+
+# 2. Load the mortality rate CSV data
+county_mr_data <- read.csv("data/County_mr.csv")
+tract_mr_data <- read.csv("data/Tract_mr.csv")
+blkgp_mr_data <- read.csv("data/Blkgp_MR.csv")
+county_mr_data$FIPS<- as.character(county_mr_data$FIPS)
+tract_mr_data$Census.Tract <- as.character(tract_mr_data$Census.Tract)
+blkgp_mr_data$Census.Block.Group <- as.character(blkgp_mr_data$Census.Block.Group)
+# 3. Join the CSV data to the geometries
+# Ensure GEOID columns are characters for a stable join
+county_mr_sf <- left_join(tx_counties_geo, county_mr_data, by = c("GEOID" = "FIPS"))
+tract_mr_sf <- left_join(tx_tracts_geo, tract_mr_data, by = c("GEOID" = "Census.Tract"))
+blkgp_mr_sf <- left_join(tx_blkgps_geo, blkgp_mr_data, by = c("GEOID" = "Census.Block.Group"))
+
+# Rename columns for consistency and convert to numeric
+# Note: Using names() is safer than dplyr::rename in case of missing columns
+names(county_mr_sf)[names(county_mr_sf) == "Population"] <- "Total_Pop"
+names(county_mr_sf)[names(county_mr_sf) == "Mortality.Rate..Deaths.100000."] <- "Mortality_Rate"
+names(tract_mr_sf)[names(tract_mr_sf) == "Population"] <- "Total_Pop"
+names(tract_mr_sf)[names(tract_mr_sf) == "Mortality.Rate..Deaths.100000."] <- "Mortality_Rate"
+names(blkgp_mr_sf)[names(blkgp_mr_sf) == "Population"] <- "Total_Pop"
+names(blkgp_mr_sf)[names(blkgp_mr_sf) == "Mortality.Rate..Deaths.100000."] <- "Mortality_Rate"
+
+# Convert columns to numeric, handling potential errors
+county_mr_sf$Total_Pop <- as.numeric(county_mr_sf$Total_Pop)
+county_mr_sf$Mortality_Rate <- as.numeric(county_mr_sf$Mortality_Rate) / 100000 # Convert to a rate per person
+tract_mr_sf$Total_Pop <- as.numeric(tract_mr_sf$Total_Pop)
+tract_mr_sf$Mortality_Rate <- as.numeric(tract_mr_sf$Mortality_Rate) / 100000
+blkgp_mr_sf$Total_Pop <- as.numeric(blkgp_mr_sf$Total_Pop)
+blkgp_mr_sf$Mortality_Rate <- as.numeric(blkgp_mr_sf$Mortality_Rate) / 100000
+
+# Define Relative Risk (RR) values
+rr_values <- list(
+  "PM2.5" = list(
+    "1.06 (Pope et al., 2002)" = 1.06,
+    "1.08 (COMEAP, 2018)" = 1.08
+  ),
+  "PM10" = list(
+    "1.04 (Pope et al., 2002)" = 1.04
+  ),
+  "NOx (as NO2)" = list(
+    "1.0046 (Faustini et al., 2014)" = 1.0046
+  ),
+  "CO" = list(
+    "Not Recommended" = NA
+  )
+)
+
+
 
 # Function to read AERMOD POSTFILE
 read_pos <- function(infile) {
@@ -126,7 +181,7 @@ package_met_files <- function(aermod_input_text, met_dir, met_year, met_roughnes
   
   aermod_exe <- "data/aermod.exe"
   if (!file.exists(aermod_exe)) {
-    stop("aermod.exe not found in data folder.")
+    stop("aermod.exe not found in www folder.")
   }
   
   temp_dir <- tempfile()
@@ -199,6 +254,67 @@ package_scenario_files <- function(baseline_input, scenario_input, scenario_titl
   return(zip_file)
 }
 
+# Helper function to get population data from EPA EnviroAtlas
+get_population_raster <- function(template_raster) {
+  # Project extent of template raster to Web Mercator (EPSG:3857)
+  template_proj <- projectExtent(template_raster, crs = "+init=epsg:3857")
+  bbox <- extent(template_proj)
+  
+  # Define the image size based on 30m resolution
+  width <- round((bbox@xmax - bbox@xmin) / 30)
+  height <- round((bbox@ymax - bbox@ymin) / 30)
+  
+  # Construct the URL for the EPA EnviroAtlas ImageServer
+  base_url <- "https://enviroatlas.epa.gov/arcgis/rest/services/Rasters/Dasymetric_2020/ImageServer/exportImage"
+  query <- list(
+    bbox = paste(bbox@xmin, bbox@ymin, bbox@xmax, bbox@ymax, sep = ","),
+    bboxSR = 3857,
+    size = paste(width, height, sep = ","),
+    imageSR = 3857,
+    format = "tiff",
+    pixelType = "F32",
+    noDataInterpretation = "esriNoDataMatchAny",
+    interpolation = "RSP_BilinearInterpolation",
+    f = "image"
+  )
+  
+  request_url <- httr::modify_url(base_url, query = query)
+  temp_tiff <- tempfile(fileext = ".tif")
+  
+  tryCatch({
+    response <- httr::GET(request_url, httr::write_disk(temp_tiff, overwrite = TRUE), httr::timeout(300))
+    if (httr::status_code(response) != 200) {
+      stop("Failed to download population data. Server responded with status: ", httr::status_code(response))
+    }
+    population_raster <- raster(temp_tiff)
+    return(population_raster)
+  }, error = function(e) {
+    showNotification(paste("Error fetching population data:", e$message), type = "error", duration = 15)
+    return(NULL)
+  })
+}
+
+# Helper function to calculate weighted exposure
+calculate_weighted_exposure <- function(conc_raster, pop_raster) {
+  pop_raster_proj <- projectRaster(pop_raster, crs = crs(conc_raster), method = 'bilinear')
+  conc_resampled <- resample(conc_raster, pop_raster_proj, method = 'bilinear')
+  pop_raster_proj <- crop(pop_raster_proj, extent(conc_resampled))
+  conc_resampled[is.na(conc_resampled)] <- 0
+  pop_raster_proj[is.na(pop_raster_proj) | pop_raster_proj < 0] <- 0
+  
+  product_raster <- conc_resampled * pop_raster_proj
+  sum_product <- cellStats(product_raster, 'sum', na.rm = TRUE)
+  sum_pop <- cellStats(pop_raster_proj, 'sum', na.rm = TRUE)
+  
+  weighted_avg <- if (sum_pop > 0) sum_product / sum_pop else 0
+  
+  return(list(
+    weighted_avg = weighted_avg,
+    conc_resampled = conc_resampled,
+    pop_resampled = pop_raster_proj
+  ))
+}
+
 
 # User Interface (UI)
 ui <- fluidPage(
@@ -220,6 +336,14 @@ ui <- fluidPage(
                 background-color: rgba(255,255,0,0.4);
                 z-index: 9999;
                 pointer-events: none;
+              }
+              .total-impact-box {
+                border: 2px solid #007bff;
+                border-radius: 5px;
+                padding: 20px;
+                text-align: center;
+                background-color: #f0f8ff;
+                margin-top: 20px;
               }
             "))
           ),
@@ -304,18 +428,16 @@ ui <- fluidPage(
                  hr(),
                  h4("Visualization Options"),
                  selectInput("interpolation_res", "Interpolation Grid Resolution", choices = c("30m" = 30, "50m" = 50, "100m" = 100), selected = 30),
-                 # New radio buttons for interpolation method
                  radioButtons("interpolation_method", "Interpolation Method:",
                               choices = c("Smooth (IDW)" = "idw", "Fast (Nearest Neighbor)" = "nn"),
                               selected = "idw"),
                  actionButton("visualize_results", "Generate Visualizations"),
                  br(),
-                 # New button to navigate to the exposure tab
                  conditionalPanel(
-                   condition = "output.is_exposure_assessment_flow",
+                   condition = "output.is_exposure_assessment_flow || output.is_hia_flow",
                    tagList(
                      br(),
-                     actionButton("goto_exposure_tab_btn", "Proceed to Exposure Assessment", icon = icon("arrow-right"), class = "btn-success")
+                     actionButton("goto_exposure_tab_btn", "Proceed to Exposure Assessment", icon = icon("arrow-right"), class = "btn-info")
                    )
                  ),
                  br(),
@@ -331,14 +453,40 @@ ui <- fluidPage(
              sidebarLayout(
                sidebarPanel(
                  h4("Exposure Assessment"),
-                 p("This tool uses the AERMOD results from the previous tab and EPA's EnviroAtlas population data to calculate population-weighted exposure concentrations."),
+                 p("This tool uses the AERMOD results from the previous tab and EPA's EnviroAtlas population data to estimate exposure."),
                  p("Click the button below to run the analysis. This may take a few moments as it downloads population data."),
-                 actionButton("run_exposure_assessment", "Calculate Exposure"),
+                 selectInput("exposure_geo", "Visualize Exposure by:",
+                             choices = c("Census Tract" = "Tract", "Census Block Group" = "Block Group")),
+                 actionButton("run_exposure_assessment", "Calculate & Visualize Exposure"),
                  hr(),
-                 actionButton("back_to_pipeline_exposure_tab", "Back to Pipeline Selection")
+                 conditionalPanel(
+                   condition = "output.is_hia_flow",
+                   actionButton("goto_hia_tab_btn", "Proceed to Health Impact Assessment", icon = icon("arrow-right"), class = "btn-success")
+                 ),
+                 actionButton("back_to_viz_results_btn", "Back to Results Upload")
                ),
                mainPanel(
                  withSpinner(uiOutput("exposure_results_display_ui"), type = 5)
+               )
+             )
+    ),
+    # Health Impact Assessment Tab
+    tabPanel(title = "Health Impact Assessment",
+             sidebarLayout(
+               sidebarPanel(
+                 h4("Health Impact Assessment Setup"),
+                 p("Calculate the change in all-cause mortality based on the change in pollutant concentration."),
+                 selectInput("hia_pollutant", "Select Pollutant:",
+                             choices = names(rr_values)),
+                 uiOutput("hia_rr_ui"),
+                 selectInput("hia_mortality_geo", "Select Mortality Data:",
+                             choices = c("Census Tract" = "Tract", "Census Block Group" = "Block Group", "County" = "County")),
+                 actionButton("run_hia", "Run Health Impact Assessment", icon = icon("calculator")),
+                 hr(),
+                 actionButton("back_to_exposure_btn", "Back to Exposure Assessment")
+               ),
+               mainPanel(
+                 withSpinner(uiOutput("hia_results_display_ui"), type = 5)
                )
              )
     )
@@ -376,13 +524,15 @@ server <- function(input, output, session) {
     difference_raster = NULL,
     processed_results_data = NULL,
     is_hourly = FALSE,
-    # New reactive values for exposure assessment
     pop_raster = NULL,
     exposure_conc_base = NULL,
     exposure_conc_alt = NULL,
     resampled_conc_raster_base = NULL,
     resampled_conc_raster_alt = NULL,
-    pop_raster_resampled = NULL
+    pop_raster_resampled = NULL,
+    exposure_by_geo = NULL, # For exposure map
+    hia_results = NULL, # For HIA map
+    total_hia_impact = NULL # For HIA summary
   )
   
   # UI modal feedback wrapper
@@ -401,13 +551,7 @@ server <- function(input, output, session) {
   # Switch to Pipeline Selection tab
   observeEvent(input$clicked_block, {
     rv$clicked_block <- input$clicked_block
-    # For exposure, we direct them, but for others, the flow is as before
-    if (input$clicked_block == "Exposure Assessment") {
-      # The UI will guide them, but we still switch to the pipeline tab
-      updateTabsetPanel(session, "maintabs", selected = "Pipeline Selection")
-    } else {
-      updateTabsetPanel(session, "maintabs", selected = "Pipeline Selection")
-    }
+    updateTabsetPanel(session, "maintabs", selected = "Pipeline Selection")
   })
   
   # Back to Landing Page from Pipeline Selection
@@ -416,56 +560,31 @@ server <- function(input, output, session) {
     for(name in names(rv)) {
       rv[[name]] <- NULL
     }
-    rv$show_visuals <- FALSE
-    rv$show_emissions <- FALSE
-    rv$show_scenarios_ui <- FALSE
-    rv$scenario_mode <- FALSE
     session$sendCustomMessage(type = "resetInput", message = list(id = "clicked_block"))
     updateTabsetPanel(session, "maintabs", selected = "Landing Page")
   })
   
-  # Back to Pipeline Selection from Results
-  observeEvent(input$back_to_pipeline, {
-    updateTabsetPanel(session, "maintabs", selected = "Pipeline Selection")
-  })
-  
-  # Back to Landing Page from Dispersion Modeling
-  observeEvent(input$back_to_landing_dispersion, {
-    # Full reset
-    for(name in names(rv)) {
-      rv[[name]] <- NULL
-    }
-    rv$show_visuals <- FALSE
-    rv$show_emissions <- FALSE
-    rv$show_scenarios_ui <- FALSE
-    rv$scenario_mode <- FALSE
-    session$sendCustomMessage(type = "resetInput", message = list(id = "clicked_block"))
-    updateTabsetPanel(session, "maintabs", selected = "Landing Page")
-  })
+  # Back button navigations
+  observeEvent(input$back_to_pipeline, { updateTabsetPanel(session, "maintabs", selected = "Pipeline Selection") })
+  observeEvent(input$back_to_viz_results_btn, { updateTabsetPanel(session, "maintabs", selected = "Visualize AERMOD Results") })
+  observeEvent(input$back_to_exposure_btn, { updateTabsetPanel(session, "maintabs", selected = "Exposure Assessment") })
   
   # Analysis Type Selection UI
   output$analysisTypeUI <- renderUI({
     req(input$clicked_block)
-    if (input$clicked_block == "Emission Modeling") {
-      radioGroupButtons(inputId = "analysisType", label = "Select Analysis Type:",
-                        choices = c("Basic Calculation", "Scenario Comparison"), justified = TRUE)
-    } else if (input$clicked_block == "Air Quality Modeling") {
-      radioGroupButtons(inputId = "analysisType", label = "Select Analysis Type:",
-                        choices = c("Single AERMOD Run", "Scenario Analysis (AERMOD)", "PM Hot Spot Analysis"), justified = TRUE)
-    } else if (input$clicked_block == "Exposure Assessment") {
+    if (input$clicked_block %in% c("Emission Modeling", "Air Quality Modeling")) {
+      choices <- if(input$clicked_block == "Emission Modeling") c("Basic Calculation", "Scenario Comparison") else c("Single AERMOD Run", "Scenario Analysis (AERMOD)", "PM Hot Spot Analysis")
+      radioGroupButtons(inputId = "analysisType", label = "Select Analysis Type:", choices = choices, justified = TRUE)
+    } else if (input$clicked_block %in% c("Exposure Assessment", "Health Impact Assessment")) {
       tagList(
         h4("Instructions"),
-        p("To perform an exposure assessment, you must first upload and process your AERMOD results."),
-        p("Please use the button below to proceed to the 'Visualize AERMOD Results' tab, upload your data, and then navigate to the 'Exposure Assessment' tab."),
+        p("This workflow requires AERMOD results. Please use the button below to proceed to the 'Visualize AERMOD Results' tab to upload your data."),
         actionButton("goto_viz_for_exposure", "Go to AERMOD Results Upload")
       )
     }
   })
   
-  observeEvent(input$goto_viz_for_exposure, {
-    updateTabsetPanel(session, "maintabs", selected = "Visualize AERMOD Results")
-  })
-  
+  observeEvent(input$goto_viz_for_exposure, { updateTabsetPanel(session, "maintabs", selected = "Visualize AERMOD Results") })
   observeEvent(input$analysisType, { rv$analysis <- input$analysisType })
   
   # Data Source Selection UI
@@ -538,37 +657,15 @@ server <- function(input, output, session) {
   
   # Run Model
   observeEvent(input$goNext, {
-    if (is.null(input$clicked_block) || input$clicked_block == "Exposure Assessment") {
-      # Do nothing if exposure assessment is selected, as the flow is different
+    if (is.null(input$clicked_block) || input$clicked_block %in% c("Exposure Assessment", "Health Impact Assessment")) {
+      # Do nothing if exposure or HIA is selected, as the flow is different
       return()
     }
     
     if (input$clicked_block == "Emission Modeling") {
-      if (rv$traffic == "Built-in (HPMS - Texas Only)" && (rv$emission == "Built-in (MOVES-ERLT - Texas Only)")) {
-        rv$stage <- "select_county"
-      } else if (rv$traffic == "Custom" && (rv$emission == "Built-in (MOVES-ERLT - Texas Only)")) {
-        rv$stage <- "custom_traffic"
-      } else if (rv$traffic == "Built-in (HPMS - Texas Only)" && (rv$emission == "Custom")) {
-        rv$stage <- "custom_emission"
-      }
       updateTabsetPanel(session, "maintabs", selected = "Emission Calculation")
-      
-    }  else if (input$clicked_block == "Air Quality Modeling") {
-      if (rv$traffic == "Built-in (HPMS - Texas Only)" && (rv$emission == "Built-in (MOVES-ERLT - Texas Only)")&& (rv$met == "Built-in (TCEQ Preprocessed - Texas Only)")) {
-        rv$stage <- "select_county"
-      } else if (rv$traffic == "Custom" && (rv$emission == "Built-in (MOVES-ERLT - Texas Only)")&& (rv$met == "Built-in (TCEQ Preprocessed - Texas Only)")) {
-        rv$stage <- "custom_traffic"
-      } else if (rv$traffic == "Built-in (HPMS - Texas Only)" && (rv$emission == "Custom")&& (rv$met == "Built-in (TCEQ Preprocessed - Texas Only)")) {
-        rv$stage <- "custom_emission"
-      } else if (rv$traffic == "Built-in (HPMS - Texas Only)" && (rv$emission == "Built-in (MOVES-ERLT - Texas Only)")&& (rv$met == "Custom") ){
-        rv$stage <- "custom_emission"
-      }
+    } else if (input$clicked_block == "Air Quality Modeling") {
       updateTabsetPanel(session, "maintabs", selected = "Emission Calculation")
-      
-    } else {
-      showModal(modalDialog(title = "Starting the Model",
-                            paste("Running", rv$analysis, "with selected data sources based on", input$clicked_block),
-                            easyClose = TRUE))
     }
   })
   
@@ -1478,6 +1575,17 @@ server <- function(input, output, session) {
     rv$gridded_receptors_alternate <- st_transform(st_sf(geometry = grid, crs = 32614), 4326)
   })
   
+  
+  # --- Navigation Buttons ---
+  observeEvent(input$goto_exposure_tab_btn, { updateTabsetPanel(session, "maintabs", selected = "Exposure Assessment") })
+  observeEvent(input$goto_hia_tab_btn, { updateTabsetPanel(session, "maintabs", selected = "Health Impact Assessment") })
+  
+  # Conditional outputs for flows
+  output$is_exposure_assessment_flow <- reactive({ rv$clicked_block == "Exposure Assessment" })
+  output$is_hia_flow <- reactive({ rv$clicked_block == "Health Impact Assessment" })
+  outputOptions(output, "is_exposure_assessment_flow", suspendWhenHidden = FALSE)
+  outputOptions(output, "is_hia_flow", suspendWhenHidden = FALSE)
+  
   # --- Visualize AERMOD Results Logic ---
   
   observeEvent(input$visualize_results, {
@@ -1650,14 +1758,9 @@ server <- function(input, output, session) {
       theme_minimal()
   })
   
+  
   # --- Exposure Assessment Logic ---
   
-  # Back to Pipeline Selection from Exposure Tab
-  observeEvent(input$back_to_pipeline_exposure_tab, {
-    updateTabsetPanel(session, "maintabs", selected = "Pipeline Selection")
-  })
-  
-  # Main observer to run the exposure assessment calculation
   observeEvent(input$run_exposure_assessment, {
     if (is.null(rv$baseline_raster)) {
       showNotification("Please generate visualizations on the 'Visualize AERMOD Results' tab first.", type = "error", duration = 10)
@@ -1665,114 +1768,79 @@ server <- function(input, output, session) {
     }
     
     with_modal({
-      # Helper function to get population data from EPA EnviroAtlas
-      get_population_raster <- function(template_raster) {
-        # Project extent of template raster to Web Mercator (EPSG:3857)
-        template_proj <- projectExtent(template_raster, crs = "+init=epsg:3857")
-        bbox <- extent(template_proj)
-        
-        # Define the image size based on 30m resolution
-        width <- round((bbox@xmax - bbox@xmin) / 30)
-        height <- round((bbox@ymax - bbox@ymin) / 30)
-        
-        # Construct the URL for the EPA EnviroAtlas ImageServer
-        base_url <- "https://enviroatlas.epa.gov/arcgis/rest/services/Rasters/Dasymetric_2020/ImageServer/exportImage"
-        query <- list(
-          bbox = paste(bbox@xmin, bbox@ymin, bbox@xmax, bbox@ymax, sep = ","),
-          bboxSR = 3857,
-          size = paste(width, height, sep = ","),
-          imageSR = 3857,
-          format = "tiff",
-          pixelType = "F32",
-          noDataInterpretation = "esriNoDataMatchAny",
-          interpolation = "RSP_BilinearInterpolation",
-          f = "image"
-        )
-        
-        request_url <- httr::modify_url(base_url, query = query)
-        temp_tiff <- tempfile(fileext = ".tif")
-        
-        tryCatch({
-          response <- httr::GET(request_url, httr::write_disk(temp_tiff, overwrite = TRUE), httr::timeout(300))
-          if (httr::status_code(response) != 200) {
-            stop("Failed to download population data. Server responded with status: ", httr::status_code(response))
-          }
-          population_raster <- raster(temp_tiff)
-          return(population_raster)
-        }, error = function(e) {
-          showNotification(paste("Error fetching population data:", e$message), type = "error", duration = 15)
-          return(NULL)
-        })
-      }
-      
-      # Helper function to calculate weighted exposure
-      calculate_weighted_exposure <- function(conc_raster, pop_raster) {
-        pop_raster_proj <- projectRaster(pop_raster, crs = crs(conc_raster), method = 'bilinear')
-        conc_resampled <- resample(conc_raster, pop_raster_proj, method = 'bilinear')
-        pop_raster_proj <- crop(pop_raster_proj, extent(conc_resampled))
-        conc_resampled[is.na(conc_resampled)] <- 0
-        pop_raster_proj[is.na(pop_raster_proj) | pop_raster_proj < 0] <- 0
-        
-        product_raster <- conc_resampled * pop_raster_proj
-        sum_product <- cellStats(product_raster, 'sum', na.rm = TRUE)
-        sum_pop <- cellStats(pop_raster_proj, 'sum', na.rm = TRUE)
-        
-        weighted_avg <- if (sum_pop > 0) sum_product / sum_pop else 0
-        
-        return(list(
-          weighted_avg = weighted_avg,
-          conc_resampled = conc_resampled,
-          pop_resampled = pop_raster_proj
-        ))
-      }
-      
-      # --- Run Calculations ---
       rv$pop_raster <- get_population_raster(rv$baseline_raster)
       req(rv$pop_raster)
       
-      # Calculate for baseline
+      # Overall weighted exposures
       results_base <- calculate_weighted_exposure(rv$baseline_raster, rv$pop_raster)
       rv$exposure_conc_base <- results_base$weighted_avg
       rv$resampled_conc_raster_base <- results_base$conc_resampled
       rv$pop_raster_resampled <- results_base$pop_resampled
       
-      # Calculate for alternate if it exists
-      if (input$compare_scenarios_viz && !is.null(rv$alternate_raster)) {
+      if (!is.null(rv$alternate_raster)) {
         results_alt <- calculate_weighted_exposure(rv$alternate_raster, rv$pop_raster)
         rv$exposure_conc_alt <- results_alt$weighted_avg
         rv$resampled_conc_raster_alt <- results_alt$conc_resampled
-      } else {
-        rv$exposure_conc_alt <- NULL
-        rv$resampled_conc_raster_alt <- NULL
       }
+      
+      # Aggregated weighted exposures per geo unit
+      geo_data <- switch(input$exposure_geo,
+                         "Tract" = tract_mr_sf,
+                         "Block Group" = blkgp_mr_sf)
+      
+      # Crop geo_data to study area
+      raster_bbox <- st_bbox(rv$baseline_raster)
+      bbox_sf <- st_as_sfc(raster_bbox, crs = crs(rv$baseline_raster))
+      bbox_sf <- st_transform(bbox_sf, st_crs(geo_data))
+      geo_data_cropped <- geo_data[st_intersects(geo_data, bbox_sf, sparse = FALSE)[,1], ]
+      geo_data_proj <- st_transform(geo_data_cropped, crs(rv$baseline_raster))
+      
+      # Calculate weighted exposure for base
+      exposure_base <- numeric(nrow(geo_data_proj))
+      for(i in 1:nrow(geo_data_proj)){
+        poly <- geo_data_proj[i,]
+        conc_masked <- mask(crop(rv$resampled_conc_raster_base, extent(poly)), poly)
+        pop_masked <- mask(crop(rv$pop_raster_resampled, extent(poly)), poly)
+        sum_product <- cellStats(conc_masked * pop_masked, 'sum', na.rm = TRUE)
+        sum_pop <- cellStats(pop_masked, 'sum', na.rm = TRUE)
+        exposure_base[i] <- if(sum_pop > 0) sum_product / sum_pop else NA
+      }
+      geo_data_proj$exposure_base <- exposure_base
+      
+      # If alternate
+      if (!is.null(rv$alternate_raster)) {
+        exposure_alt <- numeric(nrow(geo_data_proj))
+        for(i in 1:nrow(geo_data_proj)){
+          poly <- geo_data_proj[i,]
+          conc_masked <- mask(crop(rv$resampled_conc_raster_alt, extent(poly)), poly)
+          pop_masked <- mask(crop(rv$pop_raster_resampled, extent(poly)), poly)
+          sum_product <- cellStats(conc_masked * pop_masked, 'sum', na.rm = TRUE)
+          sum_pop <- cellStats(pop_masked, 'sum', na.rm = TRUE)
+          exposure_alt[i] <- if(sum_pop > 0) sum_product / sum_pop else NA
+        }
+        geo_data_proj$exposure_alt <- exposure_alt
+      }
+      
+      rv$exposure_by_geo <- geo_data_proj
+      
     }, "Calculating Population Exposure...")
   })
   
-  # UI to display exposure results (maps and value boxes)
   output$exposure_results_display_ui <- renderUI({
     req(rv$exposure_conc_base)
     
     # Value box style
     value_box_style <- "border: 1px solid #ddd; padding: 15px; border-radius: 5px; text-align: center; background-color: #f5f5f5;"
     
-    if (is.null(rv$exposure_conc_alt)) {
-      # Single scenario display
-      tagList(
+    tagList(
+      if (is.null(rv$exposure_conc_alt)) {
         fluidRow(
           column(12, style = value_box_style,
                  h4("Population-Weighted Exposure Concentration"),
                  h3(sprintf("%.4f µg/m³", rv$exposure_conc_base))
           )
-        ),
-        hr(),
-        fluidRow(
-          column(6, h4("Concentration (30m)"), leafletOutput("exposure_conc_map_base")),
-          column(6, h4("Population (30m)"), leafletOutput("exposure_pop_map"))
         )
-      )
-    } else {
-      # Comparison display
-      tagList(
+      } else {
         fluidRow(
           column(6, style = value_box_style,
                  h4(paste(input$scenario_name_base, "Exposure")),
@@ -1782,18 +1850,32 @@ server <- function(input, output, session) {
                  h4(paste(input$scenario_name_alt, "Exposure")),
                  h3(sprintf("%.4f µg/m³", rv$exposure_conc_alt))
           )
-        ),
-        hr(),
-        fluidRow(
-          column(6, h4(paste(input$scenario_name_base, "Concentration (30m)")), leafletOutput("exposure_conc_map_base")),
-          column(6, h4(paste(input$scenario_name_alt, "Concentration (30m)")), leafletOutput("exposure_conc_map_alt"))
-        ),
-        hr(),
-        fluidRow(
-          column(12, h4("Population (30m)"), leafletOutput("exposure_pop_map"))
         )
-      )
-    }
+      },
+      hr(),
+      if (is.null(rv$exposure_conc_alt)) {
+        fluidRow(
+          column(6, h4("Concentration (30m)"), leafletOutput("exposure_conc_map_base")),
+          column(6, h4("Population (30m)"), leafletOutput("exposure_pop_map"))
+        )
+      } else {
+        fluidRow(
+          column(4, h4(paste(input$scenario_name_base, "Concentration (30m)")), leafletOutput("exposure_conc_map_base")),
+          column(4, h4(paste(input$scenario_name_alt, "Concentration (30m)")), leafletOutput("exposure_conc_map_alt")),
+          column(4, h4("Population (30m)"), leafletOutput("exposure_pop_map"))
+        )
+      },
+      hr(),
+      h4(paste("Population-Weighted Mean Exposure by", input$exposure_geo)),
+      if (is.null(rv$exposure_conc_alt)) {
+        leafletOutput("exposure_map_by_geo_base")
+      } else {
+        fluidRow(
+          column(6, leafletOutput("exposure_map_by_geo_base")),
+          column(6, leafletOutput("exposure_map_by_geo_alt"))
+        )
+      }
+    )
   })
   
   # Leaflet map for baseline resampled concentration
@@ -1826,8 +1908,171 @@ server <- function(input, output, session) {
       addLegend(pal = pal, values = values(raster_wgs84), title = "Population")
   })
   
+  # Aggregated exposure map base
+  output$exposure_map_by_geo_base <- renderLeaflet({
+    req(rv$exposure_by_geo)
+    map_data <- st_transform(rv$exposure_by_geo, 4326)
+    pal <- colorNumeric("viridis", domain = map_data$exposure_base, na.color = "transparent")
+    
+    leaflet(map_data) %>%
+      addTiles() %>%
+      addPolygons(fillColor = ~pal(exposure_base),
+                  fillOpacity = 0.7,
+                  color = "#BDBDC3",
+                  weight = 1,
+                  label = ~paste0(GEOID, ": ", round(exposure_base, 4), " µg/m³")) %>%
+      addLegend(pal = pal, values = ~exposure_base, title = "Mean Exposure (µg/m³)",
+                position = "bottomright")
+  })
+  
+  # Aggregated exposure map alt
+  output$exposure_map_by_geo_alt <- renderLeaflet({
+    req(rv$exposure_by_geo, rv$exposure_conc_alt)
+    map_data <- st_transform(rv$exposure_by_geo, 4326)
+    pal <- colorNumeric("viridis", domain = map_data$exposure_alt, na.color = "transparent")
+    
+    leaflet(map_data) %>%
+      addTiles() %>%
+      addPolygons(fillColor = ~pal(exposure_alt),
+                  fillOpacity = 0.7,
+                  color = "#BDBDC3",
+                  weight = 1,
+                  label = ~paste0(GEOID, ": ", round(exposure_alt, 4), " µg/m³")) %>%
+      addLegend(pal = pal, values = ~exposure_alt, title = "Mean Exposure (µg/m³)",
+                position = "bottomright")
+  })
+  
+  # --- Health Impact Assessment (HIA) Logic ---
+  
+  # Dynamic UI for RR selection
+  output$hia_rr_ui <- renderUI({
+    req(input$hia_pollutant)
+    choices <- rr_values[[input$hia_pollutant]]
+    if (any(is.na(choices))) {
+      p("HIA for long-term CO exposure is not recommended due to scientific uncertainty.")
+    } else {
+      selectInput("hia_rr_value", "Select Relative Risk (RR) per 10 µg/m³:",
+                  choices = choices)
+    }
+  })
+  
+  # Main HIA calculation observer
+  observeEvent(input$run_hia, {
+    req(rv$baseline_raster, input$hia_pollutant, input$hia_rr_value, input$hia_mortality_geo)
+    
+    if(is.na(input$hia_rr_value)) {
+      showNotification("Cannot run HIA with the selected pollutant.", type = "warning")
+      return()
+    }
+    
+    with_modal({
+      # Ensure pop and resampled conc are available
+      if (is.null(rv$pop_raster_resampled)) {
+        rv$pop_raster <- get_population_raster(rv$baseline_raster)
+        results_base <- calculate_weighted_exposure(rv$baseline_raster, rv$pop_raster)
+        rv$resampled_conc_raster_base <- results_base$conc_resampled
+        rv$pop_raster_resampled <- results_base$pop_resampled
+        if (!is.null(rv$alternate_raster)) {
+          results_alt <- calculate_weighted_exposure(rv$alternate_raster, rv$pop_raster)
+          rv$resampled_conc_raster_alt <- results_alt$conc_resampled
+        }
+      }
+      
+      # Select geo data
+      geo_data <- switch(input$hia_mortality_geo,
+                         "County" = county_mr_sf,
+                         "Tract" = tract_mr_sf,
+                         "Block Group" = blkgp_mr_sf)
+      
+      # Crop to study area
+      raster_bbox <- st_bbox(rv$baseline_raster)
+      bbox_sf <- st_as_sfc(raster_bbox, crs = crs(rv$baseline_raster))
+      bbox_sf <- st_transform(bbox_sf, st_crs(geo_data))
+      geo_data_cropped <- geo_data[st_intersects(geo_data, bbox_sf, sparse = FALSE)[,1], ]
+      geo_data_proj <- st_transform(geo_data_cropped, crs(rv$baseline_raster))
+      
+      # Calculate weighted conc for base
+      base_conc <- numeric(nrow(geo_data_proj))
+      for(i in 1:nrow(geo_data_proj)){
+        poly <- geo_data_proj[i,]
+        conc_masked <- mask(crop(rv$resampled_conc_raster_base, extent(poly)), poly)
+        pop_masked <- mask(crop(rv$pop_raster_resampled, extent(poly)), poly)
+        sum_product <- cellStats(conc_masked * pop_masked, 'sum', na.rm = TRUE)
+        sum_pop <- cellStats(pop_masked, 'sum', na.rm = TRUE)
+        base_conc[i] <- if(sum_pop > 0) sum_product / sum_pop else NA
+      }
+      geo_data_proj$base_conc <- base_conc
+      
+      # If alternate
+      if (!is.null(rv$alternate_raster)) {
+        alt_conc <- numeric(nrow(geo_data_proj))
+        for(i in 1:nrow(geo_data_proj)){
+          poly <- geo_data_proj[i,]
+          conc_masked <- mask(crop(rv$resampled_conc_raster_alt, extent(poly)), poly)
+          pop_masked <- mask(crop(rv$pop_raster_resampled, extent(poly)), poly)
+          sum_product <- cellStats(conc_masked * pop_masked, 'sum', na.rm = TRUE)
+          sum_pop <- cellStats(pop_masked, 'sum', na.rm = TRUE)
+          alt_conc[i] <- if(sum_pop > 0) sum_product / sum_pop else NA
+        }
+        geo_data_proj$alt_conc <- alt_conc
+        delta_x <- geo_data_proj$base_conc - geo_data_proj$alt_conc
+      } else {
+        delta_x <- geo_data_proj$base_conc
+      }
+      
+      # Calculate Beta from RR
+      beta <- log(as.numeric(input$hia_rr_value)) / 10
+      
+      # Health Impact Function
+      geo_data_proj$health_impact <- geo_data_proj$Mortality_Rate * (1 - exp(-beta * delta_x)) * geo_data_proj$Total_Pop
+      rv$total_hia_impact <- sum(geo_data_proj$health_impact, na.rm = TRUE)
+      rv$hia_results <- geo_data_proj
+      
+    }, "Running Health Impact Assessment...")
+  })
+  
+  # UI to display HIA results
+  output$hia_results_display_ui <- renderUI({
+    req(rv$hia_results, rv$total_hia_impact)
+    
+    impact_title <- if (!is.null(rv$alternate_raster)) "Annual Deaths Avoided" else "Annual Attributable Deaths"
+    
+    tagList(
+      leafletOutput("hia_map"),
+      div(class = "total-impact-box",
+          h3(impact_title),
+          h2(round(rv$total_hia_impact, 2))
+      )
+    )
+  })
+  
+  # Leaflet map for HIA results
+  output$hia_map <- renderLeaflet({
+    req(rv$hia_results)
+    map_data <- st_transform(rv$hia_results, 4326)
+    
+    # Handle potential Inf/-Inf values for color palette
+    finite_impacts <- map_data$health_impact[is.finite(map_data$health_impact)]
+    if (length(finite_impacts) == 0) return()
+    
+    pal_domain <- range(finite_impacts, na.rm = TRUE)
+    
+    # Use a diverging palette for avoided deaths, sequential for attributable
+    pal_colors <- if (!is.null(rv$alternate_raster)) "RdYlGn" else "YlOrRd"
+    pal <- colorNumeric(pal_colors, domain = pal_domain, na.color = "transparent")
+    
+    leaflet(map_data) %>%
+      addTiles() %>%
+      addPolygons(fillColor = ~pal(health_impact),
+                  fillOpacity = 0.8,
+                  color = "#BDBDC3",
+                  weight = 1,
+                  label = ~paste0(GEOID, ": ", round(health_impact, 3))) %>%
+      addLegend(pal = pal, values = ~health_impact, title = "Health Impact",
+                position = "bottomright")
+  })
+  
 }
 
 # Launch the app
 shinyApp(ui, server)
-

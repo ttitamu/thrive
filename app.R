@@ -1921,7 +1921,7 @@ server <- function(input, output, session) {
                   color = "#BDBDC3",
                   weight = 1,
                   label = ~paste0(GEOID, ": ", round(exposure_base, 4), " µg/m³")) %>%
-      addLegend(pal = pal, values = ~exposure_base, title = "Mean Exposure (µg/m³)",
+      addLegend(pal = pal, values = ~exposure_base, title = "Mean Exposure baseline (µg/m³)",
                 position = "bottomright")
   })
   
@@ -1938,7 +1938,7 @@ server <- function(input, output, session) {
                   color = "#BDBDC3",
                   weight = 1,
                   label = ~paste0(GEOID, ": ", round(exposure_alt, 4), " µg/m³")) %>%
-      addLegend(pal = pal, values = ~exposure_alt, title = "Mean Exposure (µg/m³)",
+      addLegend(pal = pal, values = ~exposure_alt, title = "Mean Exposure alternate (µg/m³)",
                 position = "bottomright")
   })
   

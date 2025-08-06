@@ -1,0 +1,241 @@
+Period,Hour_ID,District,Hourly_Fraction
+Overnight,20,Austin,0.048973
+Overnight,20,Beaumont,0.043167
+Overnight,20,Bryan,0.046853
+Overnight,20,Corpus Christi,0.044823
+Overnight,20,Dallas,0.048873
+Overnight,20,El Paso,0.048417
+Overnight,20,Fort Worth,0.045633
+Overnight,20,Houston,0.047264
+Overnight,20,San Antonio,0.047353
+Overnight,20,Waco,0.044963
+Overnight,21,Austin,0.038935
+Overnight,21,Beaumont,0.0336
+Overnight,21,Bryan,0.037487
+Overnight,21,Corpus Christi,0.034654
+Overnight,21,Dallas,0.038436
+Overnight,21,El Paso,0.038448
+Overnight,21,Fort Worth,0.034931
+Overnight,21,Houston,0.035618
+Overnight,21,San Antonio,0.037329
+Overnight,21,Waco,0.037499
+Overnight,22,Austin,0.03294
+Overnight,22,Beaumont,0.026357
+Overnight,22,Bryan,0.029748
+Overnight,22,Corpus Christi,0.027465
+Overnight,22,Dallas,0.032385
+Overnight,22,El Paso,0.031493
+Overnight,22,Fort Worth,0.028675
+Overnight,22,Houston,0.029616
+Overnight,22,San Antonio,0.030908
+Overnight,22,Waco,0.030495
+Overnight,23,Austin,0.025637
+Overnight,23,Beaumont,0.019066
+Overnight,23,Bryan,0.021534
+Overnight,23,Corpus Christi,0.020524
+Overnight,23,Dallas,0.025816
+Overnight,23,El Paso,0.024476
+Overnight,23,Fort Worth,0.021995
+Overnight,23,Houston,0.022901
+Overnight,23,San Antonio,0.023465
+Overnight,23,Waco,0.023719
+Overnight,24,Austin,0.018156
+Overnight,24,Beaumont,0.013212
+Overnight,24,Bryan,0.014508
+Overnight,24,Corpus Christi,0.014257
+Overnight,24,Dallas,0.01824
+Overnight,24,El Paso,0.01736
+Overnight,24,Fort Worth,0.01527
+Overnight,24,Houston,0.015418
+Overnight,24,San Antonio,0.016248
+Overnight,24,Waco,0.017325
+Overnight,1,Austin,0.011267
+Overnight,1,Beaumont,0.008315
+Overnight,1,Bryan,0.008945
+Overnight,1,Corpus Christi,0.008517
+Overnight,1,Dallas,0.010561
+Overnight,1,El Paso,0.010308
+Overnight,1,Fort Worth,0.009061
+Overnight,1,Houston,0.008613
+Overnight,1,San Antonio,0.009536
+Overnight,1,Waco,0.012126
+Overnight,2,Austin,0.008068
+Overnight,2,Beaumont,0.006172
+Overnight,2,Bryan,0.006793
+Overnight,2,Corpus Christi,0.005925
+Overnight,2,Dallas,0.007211
+Overnight,2,El Paso,0.007044
+Overnight,2,Fort Worth,0.006148
+Overnight,2,Houston,0.005697
+Overnight,2,San Antonio,0.006607
+Overnight,2,Waco,0.009916
+Overnight,3,Austin,0.007243
+Overnight,3,Beaumont,0.005793
+Overnight,3,Bryan,0.006319
+Overnight,3,Corpus Christi,0.00519
+Overnight,3,Dallas,0.00658
+Overnight,3,El Paso,0.00587
+Overnight,3,Fort Worth,0.005492
+Overnight,3,Houston,0.005288
+Overnight,3,San Antonio,0.005833
+Overnight,3,Waco,0.00907
+Overnight,4,Austin,0.006865
+Overnight,4,Beaumont,0.008072
+Overnight,4,Bryan,0.007107
+Overnight,4,Corpus Christi,0.00553
+Overnight,4,Dallas,0.00717
+Overnight,4,El Paso,0.00595
+Overnight,4,Fort Worth,0.006318
+Overnight,4,Houston,0.00622
+Overnight,4,San Antonio,0.006488
+Overnight,4,Waco,0.009692
+Overnight,5,Austin,0.010241
+Overnight,5,Beaumont,0.01777
+Overnight,5,Bryan,0.010453
+Overnight,5,Corpus Christi,0.010324
+Overnight,5,Dallas,0.012384
+Overnight,5,El Paso,0.008419
+Overnight,5,Fort Worth,0.011651
+Overnight,5,Houston,0.013683
+Overnight,5,San Antonio,0.010719
+Overnight,5,Waco,0.013129
+Overnight,6,Austin,0.025904
+Overnight,6,Beaumont,0.036906
+Overnight,6,Bryan,0.018251
+Overnight,6,Corpus Christi,0.026007
+Overnight,6,Dallas,0.031265
+Overnight,6,El Paso,0.018473
+Overnight,6,Fort Worth,0.029481
+Overnight,6,Houston,0.039608
+Overnight,6,San Antonio,0.027475
+Overnight,6,Waco,0.022677
+Mid-Day,10,Austin,0.054842
+Mid-Day,10,Beaumont,0.049551
+Mid-Day,10,Bryan,0.050814
+Mid-Day,10,Corpus Christi,0.051133
+Mid-Day,10,Dallas,0.050938
+Mid-Day,10,El Paso,0.055629
+Mid-Day,10,Fort Worth,0.05161
+Mid-Day,10,Houston,0.051152
+Mid-Day,10,San Antonio,0.049199
+Mid-Day,10,Waco,0.050217
+Mid-Day,11,Austin,0.052886
+Mid-Day,11,Beaumont,0.052657
+Mid-Day,11,Bryan,0.054547
+Mid-Day,11,Corpus Christi,0.052208
+Mid-Day,11,Dallas,0.048748
+Mid-Day,11,El Paso,0.053314
+Mid-Day,11,Fort Worth,0.049502
+Mid-Day,11,Houston,0.049779
+Mid-Day,11,San Antonio,0.048551
+Mid-Day,11,Waco,0.054539
+Mid-Day,12,Austin,0.05496
+Mid-Day,12,Beaumont,0.057662
+Mid-Day,12,Bryan,0.060416
+Mid-Day,12,Corpus Christi,0.056487
+Mid-Day,12,Dallas,0.050564
+Mid-Day,12,El Paso,0.055433
+Mid-Day,12,Fort Worth,0.051577
+Mid-Day,12,Houston,0.051626
+Mid-Day,12,San Antonio,0.0514
+Mid-Day,12,Waco,0.058946
+Mid-Day,13,Austin,0.057014
+Mid-Day,13,Beaumont,0.060752
+Mid-Day,13,Bryan,0.06505
+Mid-Day,13,Corpus Christi,0.059683
+Mid-Day,13,Dallas,0.053408
+Mid-Day,13,El Paso,0.058225
+Mid-Day,13,Fort Worth,0.054267
+Mid-Day,13,Houston,0.05371
+Mid-Day,13,San Antonio,0.054347
+Mid-Day,13,Waco,0.061952
+Mid-Day,14,Austin,0.057916
+Mid-Day,14,Beaumont,0.060924
+Mid-Day,14,Bryan,0.066707
+Mid-Day,14,Corpus Christi,0.060673
+Mid-Day,14,Dallas,0.054966
+Mid-Day,14,El Paso,0.05983
+Mid-Day,14,Fort Worth,0.056162
+Mid-Day,14,Houston,0.054729
+Mid-Day,14,San Antonio,0.055779
+Mid-Day,14,Waco,0.063738
+Mid-Day,15,Austin,0.059972
+Mid-Day,15,Beaumont,0.062569
+Mid-Day,15,Bryan,0.067557
+Mid-Day,15,Corpus Christi,0.06242
+Mid-Day,15,Dallas,0.058653
+Mid-Day,15,El Paso,0.062325
+Mid-Day,15,Fort Worth,0.0607
+Mid-Day,15,Houston,0.058162
+Mid-Day,15,San Antonio,0.059264
+Mid-Day,15,Waco,0.066246
+Mid-Day,16,Austin,0.063451
+Mid-Day,16,Beaumont,0.069425
+Mid-Day,16,Bryan,0.070146
+Mid-Day,16,Corpus Christi,0.067869
+Mid-Day,16,Dallas,0.064147
+Mid-Day,16,El Paso,0.067486
+Mid-Day,16,Fort Worth,0.067909
+Mid-Day,16,Houston,0.064251
+Mid-Day,16,San Antonio,0.067227
+Mid-Day,16,Waco,0.069151
+AM Peak,7,Austin,0.052283
+AM Peak,7,Beaumont,0.04947
+AM Peak,7,Bryan,0.034835
+AM Peak,7,Corpus Christi,0.044797
+AM Peak,7,Dallas,0.055053
+AM Peak,7,El Paso,0.037881
+AM Peak,7,Fort Worth,0.054731
+AM Peak,7,Houston,0.062954
+AM Peak,7,San Antonio,0.052944
+AM Peak,7,Waco,0.03908
+AM Peak,8,Austin,0.062006
+AM Peak,8,Beaumont,0.059047
+AM Peak,8,Bryan,0.056389
+AM Peak,8,Corpus Christi,0.060424
+AM Peak,8,Dallas,0.064482
+AM Peak,8,El Paso,0.062847
+AM Peak,8,Fort Worth,0.067899
+AM Peak,8,Houston,0.065836
+AM Peak,8,San Antonio,0.065012
+AM Peak,8,Waco,0.054286
+AM Peak,9,Austin,0.058779
+AM Peak,9,Beaumont,0.051766
+AM Peak,9,Bryan,0.051602
+AM Peak,9,Corpus Christi,0.055631
+AM Peak,9,Dallas,0.058205
+AM Peak,9,El Paso,0.06324
+AM Peak,9,Fort Worth,0.060926
+AM Peak,9,Houston,0.057431
+AM Peak,9,San Antonio,0.056914
+AM Peak,9,Waco,0.049392
+PM Peak,17,Austin,0.065728
+PM Peak,17,Beaumont,0.074649
+PM Peak,17,Bryan,0.074494
+PM Peak,17,Corpus Christi,0.075794
+PM Peak,17,Dallas,0.069373
+PM Peak,17,El Paso,0.072434
+PM Peak,17,Fort Worth,0.073722
+PM Peak,17,Houston,0.068989
+PM Peak,17,San Antonio,0.073846
+PM Peak,17,Waco,0.072129
+PM Peak,18,Austin,0.066033
+PM Peak,18,Beaumont,0.074688
+PM Peak,18,Bryan,0.078883
+PM Peak,18,Corpus Christi,0.086328
+PM Peak,18,Dallas,0.070415
+PM Peak,18,El Paso,0.072859
+PM Peak,18,Fort Worth,0.07459
+PM Peak,18,Houston,0.070844
+PM Peak,18,San Antonio,0.078702
+PM Peak,18,Waco,0.072199
+PM Peak,19,Austin,0.0599
+PM Peak,19,Beaumont,0.05841
+PM Peak,19,Bryan,0.060565
+PM Peak,19,Corpus Christi,0.063339
+PM Peak,19,Dallas,0.062127
+PM Peak,19,El Paso,0.062243
+PM Peak,19,Fort Worth,0.061752
+PM Peak,19,Houston,0.060611
+PM Peak,19,San Antonio,0.064858
+PM Peak,19,Waco,0.057517

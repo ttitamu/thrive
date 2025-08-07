@@ -31,7 +31,7 @@ county_lookup <- read.csv("data/counties.csv")
 hourly_factors_df <- read.csv("data/Hourly_Factors.csv")
 
 # 1. Load the geometries from the tigris package for the year 2020
-options(tigris_use_cache = TRUE)
+options(tigris_use_cache = FALSE)
 tx_counties_geo <- counties("TX", year = 2020)
 tx_tracts_geo <- tracts("TX", year = 2020)
 tx_blkgps_geo <- block_groups("TX", year = 2020)

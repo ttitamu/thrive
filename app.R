@@ -1185,7 +1185,7 @@ server <- function(input, output, session) {
     pfl_file <- paste0(file_prefix, met_year, met_roughness, ".PFL")
     met_year_full <- paste0("20", met_year)
     
-    co_lines <- c("CO STARTING", paste("CO TITLEONE", title), "CO MODELOPT FLAT CONC", paste("CO POLLUTID", poll),
+    co_lines <- c("CO STARTING", paste("CO TITLEONE", title), "CO MODELOPT FLAT CONC FASTALL", paste("CO POLLUTID", poll),
                   paste("CO AVERTIME", averaging_time), "CO FLAGPOLE 1.8", sprintf("CO URBANOPT %d %.1f", population, roughness),
                   "CO RUNORNOT RUN", "CO FINISHED")
     

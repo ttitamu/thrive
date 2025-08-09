@@ -1603,7 +1603,6 @@ server <- function(input, output, session) {
         if (method == "idw") {
           # Smooth (IDW) interpolation
           idw_gstat <- gstat(formula = AVG_CONC ~ 1, data = points_sf)
-          interp_grid <- predict(idw_gstat, newdata = grid)
         } else {
           # Fast (Nearest Neighbor) interpolation
           # Using krige with nmax=1 and no variogram model performs nearest neighbor interpolation
